@@ -1,0 +1,365 @@
+<!--
+  @license
+  このソフトウェアは、MITライセンスのもとで公開されています。
+  Copyright (c) 2024 Masaaki Maeta
+  modified for Fukuoka Prefectural Kasuga High School
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>音声録音アプリ (春日高校Ver.)</title>
+  <style>
+    :root {
+      --primary-color: #E64A19; /* 春日高校スクールカラー（朱） */
+      --primary-hover-color: #BF360C;
+      --text-color: #333;
+      --container-bg-color: rgba(255, 255, 255, 0.92);
+      --border-color: #ccc;
+    }
+
+    body {
+      font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', '平角ゴ ProN W3', sans-serif;
+      margin: 0;
+      padding: 20px;
+      color: var(--text-color);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+      box-sizing: border-box;
+    }
+
+    /* 動きのある背景 */
+    #bg-animation {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -2;
+      background: linear-gradient(135deg, #FFAB91 0%, #FF8A65 50%, #FF7043 100%);
+      background-size: 200% 200%;
+      animation: gradientShift 10s ease infinite;
+    }
+
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .container {
+      background-color: var(--container-bg-color);
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      max-width: 480px;
+      width: 100%;
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      color: var(--primary-color);
+      margin: 10px 0 0 0;
+      font-size: 22px;
+      line-height: 1.4;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #666;
+      margin-top: 5px;
+    }
+
+    .input-group {
+      margin-bottom: 20px;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .input-group input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-sizing: border-box;
+      font-size: 15px;
+    }
+
+    .button-group {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    button {
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      font-size: 15px;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.2s ease;
+      font-weight: bold;
+      flex: 1;
+      min-width: 120px;
+    }
+
+    button:hover {
+      background-color: var(--primary-hover-color);
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+      transform: none;
+      opacity: 0.7;
+    }
+
+    #status {
+      margin-top: 15px;
+      padding: 12px;
+      background-color: #f8f9fa;
+      border-left: 4px solid var(--primary-color);
+      border-radius: 4px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    #audioPlayback {
+      width: 100%;
+      margin-top: 15px;
+    }
+
+    #downloadLink {
+      display: block;
+      margin-top: 12px;
+      text-align: center;
+      color: var(--primary-color);
+      font-size: 13px;
+      text-decoration: none;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+</head>
+<body>
+  <div id="bg-animation"></div>
+  
+  <div class="container">
+    <header>
+      <h1>🌸 福岡県立春日高等学校<br>音声録音アプリ (MP3対応)</h1>
+      <div class="subtitle">録音データはGoogleドライブへ自動保存されます</div>
+    </header>
+
+    <div class="input-group">
+      <label for="prefixName">グループ名 / ペア名 (ファイル名に付きます):</label>
+      <input type="text" id="prefixName" placeholder="例: 春日1組_Aグループ">
+    </div>
+
+    <div class="button-group">
+      <button id="recordButton">録音開始</button>
+      <button id="stopButton" disabled>停止</button>
+      <button id="saveButton" disabled>MP3でドライブ保存</button>
+    </div>
+
+    <div id="status">マイクの使用許可を確認し、「録音開始」を押してください。</div>
+    <audio id="audioPlayback" controls style="display:none;"></audio>
+    <a id="downloadLink" style="display:none;">エンコードされたMP3を直接ダウンロード (デバッグ用)</a>
+  </div>
+
+  <script>
+    // ★★★ STEP 2でコピーした「GASのWebアプリURL」をここに入れてください ★★★
+    const GAS_WEB_APP_URL = "https://script.google.com/a/macros/gs.seito-fku.ed.jp/s/AKfycbxDrPjzZq833xp-h1tEWmTmdG8gYKkL6BUstZULT_B6Nxb-VdeCqvoGDr5pNuNfF9z-wg/exec";
+
+    const recordButton = document.getElementById('recordButton');
+    const stopButton = document.getElementById('stopButton');
+    const saveButton = document.getElementById('saveButton');
+    const statusDisplay = document.getElementById('status');
+    const audioPlayback = document.getElementById('audioPlayback');
+    const downloadLink = document.getElementById('downloadLink');
+    const prefixNameInput = document.getElementById('prefixName');
+
+    let mediaRecorder;
+    let audioChunks = [];
+    let originalAudioBlob = null;
+    let stream = null;
+
+    recordButton.onclick = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const options = { mimeType: 'audio/webm;codecs=opus' };
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            delete options.mimeType;
+        }
+        mediaRecorder = new MediaRecorder(stream, options);
+
+        mediaRecorder.ondataavailable = event => {
+          audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          originalAudioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+          const audioUrl = URL.createObjectURL(originalAudioBlob);
+          audioPlayback.src = audioUrl;
+          audioPlayback.style.display = 'block';
+
+          recordButton.disabled = false;
+          stopButton.disabled = true;
+          saveButton.disabled = false;
+          statusDisplay.textContent = '録音停止。再生して確認するか、保存を押してください。';
+          audioChunks = [];
+        };
+
+        audioChunks = [];
+        mediaRecorder.start();
+        statusDisplay.textContent = '🎙️ 録音中...';
+        recordButton.disabled = true;
+        stopButton.disabled = false;
+        saveButton.disabled = true;
+        prefixNameInput.disabled = true;
+        audioPlayback.style.display = 'none';
+
+      } catch (err) {
+        console.error("マイクアクセスエラー:", err);
+        statusDisplay.textContent = 'エラー: マイクにアクセスできませんでした。ブラウザの設定を確認してください。';
+      }
+    };
+
+    stopButton.onclick = () => {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+          stream = null;
+        }
+        prefixNameInput.disabled = false;
+      }
+    };
+
+    saveButton.onclick = async () => {
+      if (!originalAudioBlob) return;
+
+      statusDisplay.textContent = '⏳ MP3へ変換中... しばらくお待ちください。';
+      saveButton.disabled = true;
+      recordButton.disabled = true;
+      prefixNameInput.disabled = true;
+
+      try {
+        const mp3Blob = await encodeToMp3(originalAudioBlob);
+        statusDisplay.textContent = '⏳ Googleドライブに保存中...';
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const audioDataUrl = reader.result;
+
+          let userPrefix = prefixNameInput.value.trim() || "春日高校";
+          userPrefix = userPrefix.replace(/[\s\\\/:\*\?"<>\|]/g, '_');
+
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const baseFileName = `${userPrefix}_録音_${timestamp}.mp3`;
+
+          fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+              audioDataUrl: audioDataUrl,
+              fileName: baseFileName
+            })
+          })
+          .then(res => res.json())
+          .then(response => {
+            if (response.success) {
+              statusDisplay.textContent = '✅ ' + response.message;
+              saveButton.disabled = true; 
+            } else {
+              statusDisplay.textContent = `❌ 保存失敗: ${response.message}`;
+              saveButton.disabled = false;
+            }
+            recordButton.disabled = false;
+            prefixNameInput.disabled = false;
+          })
+          .catch(error => {
+            console.error('Fetch Error:', error);
+            statusDisplay.textContent = '✅ 保存リクエストを送信しました（ドライブを確認してください）。';
+            saveButton.disabled = false;
+            recordButton.disabled = false;
+            prefixNameInput.disabled = false;
+          });
+        };
+        reader.readAsDataURL(mp3Blob);
+      } catch (error) {
+        console.error("MP3エンコードエラー:", error);
+        statusDisplay.textContent = `エラー: ${error.message}`;
+        saveButton.disabled = false;
+        recordButton.disabled = false;
+        prefixNameInput.disabled = false;
+      }
+    };
+
+    async function encodeToMp3(audioBlob) {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        const numChannels = audioBuffer.numberOfChannels;
+        const sampleRate = audioBuffer.sampleRate;
+        const mp3encoder = new lamejs.Mp3Encoder(numChannels, sampleRate, 128);
+        const mp3Data = [];
+        const pcmData = [];
+        
+        for (let i = 0; i < numChannels; i++) {
+            pcmData.push(audioBuffer.getChannelData(i));
+        }
+        
+        const samplesLeft = new Int16Array(pcmData[0].length);
+        for (let i = 0; i < pcmData[0].length; i++) {
+            samplesLeft[i] = Math.max(-1, Math.min(1, pcmData[0][i])) * 32767;
+        }
+        
+        let samplesRight = null;
+        if (numChannels > 1) {
+            samplesRight = new Int16Array(pcmData[1].length);
+            for (let i = 0; i < pcmData[1].length; i++) {
+                samplesRight[i] = Math.max(-1, Math.min(1, pcmData[1][i])) * 32767;
+            }
+        }
+        
+        const blockSize = 1152;
+        let dataBuffer;
+        for (let i = 0; i < samplesLeft.length; i += blockSize) {
+            const leftChunk = samplesLeft.subarray(i, i + blockSize);
+            let rightChunk = samplesRight ? samplesRight.subarray(i, i + blockSize) : null;
+            
+            if (numChannels === 1) {
+                dataBuffer = mp3encoder.encodeBuffer(leftChunk);
+            } else {
+                dataBuffer = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+            }
+            if (dataBuffer.length > 0) mp3Data.push(dataBuffer);
+        }
+        dataBuffer = mp3encoder.flush();
+        if (dataBuffer.length > 0) mp3Data.push(dataBuffer);
+        
+        return new Blob(mp3Data, { type: 'audio/mpeg' });
+    }
+  </script>
+</body>
+</html>
