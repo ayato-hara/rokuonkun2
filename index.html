@@ -32,7 +32,6 @@
       box-sizing: border-box;
     }
 
-    /* 動きのある背景 */
     #bg-animation {
       position: fixed;
       top: 0;
@@ -187,7 +186,6 @@
   </div>
 
   <script>
-    // ★★★ STEP 2でコピーした「GASのWebアプリURL」をここに入れてください ★★★
     const GAS_WEB_APP_URL = "https://script.google.com/a/macros/gs.seito-fku.ed.jp/s/AKfycbxDrPjzZq833xp-h1tEWmTmdG8gYKkL6BUstZULT_B6Nxb-VdeCqvoGDr5pNuNfF9z-wg/exec";
 
     const recordButton = document.getElementById('recordButton');
@@ -285,13 +283,20 @@
               fileName: baseFileName
             })
           })
-          .then(res => res.json())
-          .then(response => {
-            if (response.success) {
-              statusDisplay.textContent = '✅ ' + response.message;
-              saveButton.disabled = true; 
-            } else {
-              statusDisplay.textContent = `❌ 保存失敗: ${response.message}`;
+          .then(res => res.text())
+          .then(text => {
+            try {
+              const response = JSON.parse(text);
+              if (response.success) {
+                statusDisplay.textContent = '✅ ' + response.message;
+                saveButton.disabled = true; 
+              } else {
+                statusDisplay.textContent = `❌ 保存失敗: ${response.message}`;
+                saveButton.disabled = false;
+              }
+            } catch (e) {
+              console.error('パースエラー:', text);
+              statusDisplay.textContent = '❌ エラー: Googleへのアクセスが拒否されました（アカウントのアクセス権限制限の可能性があります）。';
               saveButton.disabled = false;
             }
             recordButton.disabled = false;
@@ -299,7 +304,7 @@
           })
           .catch(error => {
             console.error('Fetch Error:', error);
-            statusDisplay.textContent = '✅ 保存リクエストを送信しました（ドライブを確認してください）。';
+            statusDisplay.textContent = `❌ 通信エラーが発生しました: ${error.message}`;
             saveButton.disabled = false;
             recordButton.disabled = false;
             prefixNameInput.disabled = false;
